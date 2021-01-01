@@ -1,17 +1,32 @@
-A library for Dart developers.
+# Downlow
 
-Created from templates made available by Stagehand under a BSD-style
-[license](https://github.com/dart-lang/stagehand/blob/master/LICENSE).
+Tiny, Lightwight and Fast file downloads in pure Dart.
+
+Supports Full control over the download progress (pause, resume, cancel, and get progress feedback)
 
 ## Usage
 
 A simple usage example:
 
 ```dart
+import 'dart:io';
+
 import 'package:downlow/downlow.dart';
 
-main() {
-  var awesome = new Awesome();
+Future<void> main() async {
+  final target = File('/tmp/cat.jpg');
+  final options = DownloadOptions(
+    progressCallback: (current, total) {
+      final progress = (current / total) * 100;
+      print('Downloading: $progress');
+    },
+    target: target,
+    progressDatabase: InMemoryProgressDatabase(),
+  );
+  final controller = await download('https://i.imgur.com/z4d4kWk.jpg', options);
+  controller.pause(); // to pause the download.
+  controller.resume(); // to resume the download.
+  controller.cancel(); // to cancel the download.
 }
 ```
 
