@@ -62,7 +62,7 @@ class DownloadController {
         _url = url;
 
   Future<void> pause() async {
-    _stillValid();
+    _checkIfStillValid();
     if (isDownloading) {
       await _inner.cancel();
       isDownloading = false;
@@ -70,7 +70,7 @@ class DownloadController {
   }
 
   Future<void> resume() async {
-    _stillValid();
+    _checkIfStillValid();
     if (isDownloading) {
       return;
     }
@@ -78,7 +78,7 @@ class DownloadController {
   }
 
   Future<void> cancel() async {
-    _stillValid();
+    _checkIfStillValid();
     await _inner.cancel();
     await _options.progressDatabase.resetProgress(_url);
     if (_options.deleteOnCancel) {
@@ -87,7 +87,7 @@ class DownloadController {
     isCancelled = true;
   }
 
-  void _stillValid() {
+  void _checkIfStillValid() {
     if (isCancelled) throw StateError('Already cancelled');
   }
 }
@@ -98,7 +98,10 @@ class DownloadController {
 /// [total] is the content length of the response/file body.
 typedef ProgressCallback = void Function(int count, int total);
 
-Future<DownloadController> download(String url, DownloadOptions options) async {
+Future<DownloadController> download(
+  String url,
+  DownloadOptions options,
+) async {
   try {
     final subscription = await _download(url, options);
     return DownloadController._(subscription, options, url);
@@ -108,7 +111,9 @@ Future<DownloadController> download(String url, DownloadOptions options) async {
 }
 
 Future<StreamSubscription> _download(
-    String url, DownloadOptions options) async {
+  String url,
+  DownloadOptions options,
+) async {
   final client = options.httpClient ?? http.Client();
   try {
     var lastProgress = await options.progressDatabase.getProgress(url);
