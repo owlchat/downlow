@@ -9,12 +9,14 @@ class DownloadOptions {
   final ProgressCallback progressCallback;
   final File target;
   http.BaseClient httpClient;
+  void Function() onDone;
 
   DownloadOptions({
     @required this.progressDatabase,
     @required this.progressCallback,
     @required this.target,
     this.httpClient,
+    this.onDone,
   });
 }
 
@@ -82,6 +84,7 @@ Future<DownloadController> download(String url, DownloadOptions options) async {
         subscription.resume();
       },
       onDone: () async {
+        options.onDone?.call();
         await sink.close();
         if (options.httpClient != null) {
           client.close();
