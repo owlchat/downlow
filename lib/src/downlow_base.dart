@@ -6,26 +6,33 @@ import 'package:http/http.dart' as http;
 
 class DownloadOptions {
   final ProgressDatabase progressDatabase;
-  final ProgressCallback progressCallback;
   final File target;
+  final deleteOnCancel;
+
   http.BaseClient httpClient;
   void Function() onDone;
+  ProgressCallback progressCallback;
 
   DownloadOptions({
     @required this.progressDatabase,
-    @required this.progressCallback,
     @required this.target,
+    this.deleteOnCancel = false,
     this.httpClient,
     this.onDone,
+    this.progressCallback,
   });
 }
 
 abstract class ProgressDatabase {
   Future<int> getProgress(String url);
   Future<void> setProgress(String url, int received);
+
+  Future<void> resetProgress(String url) async {
+    await setProgress(url, 0);
+  }
 }
 
-class InMemoryProgressDatabase implements ProgressDatabase {
+class InMemoryProgressDatabase extends ProgressDatabase {
   final Map<String, int> _inner = {};
 
   @override
@@ -40,19 +47,48 @@ class InMemoryProgressDatabase implements ProgressDatabase {
 }
 
 class DownloadController {
-  final StreamSubscription _inner;
-  DownloadController._(StreamSubscription inner) : _inner = inner;
+  StreamSubscription _inner;
+  final DownloadOptions _options;
+  final String _url;
+  bool isCancelled = false;
+  bool isDownloading = true;
 
-  void pause() {
-    _inner.pause();
+  DownloadController._(
+    StreamSubscription inner,
+    DownloadOptions options,
+    String url,
+  )   : _inner = inner,
+        _options = options,
+        _url = url;
+
+  Future<void> pause() async {
+    _stillValid();
+    if (isDownloading) {
+      await _inner.cancel();
+      isDownloading = false;
+    }
   }
 
-  void resume() {
-    _inner.resume();
+  Future<void> resume() async {
+    _stillValid();
+    if (isDownloading) {
+      return;
+    }
+    _inner = await _download(_url, _options);
   }
 
-  void cancel() {
-    _inner.cancel();
+  Future<void> cancel() async {
+    _stillValid();
+    await _inner.cancel();
+    await _options.progressDatabase.resetProgress(_url);
+    if (_options.deleteOnCancel) {
+      await _options.target.delete();
+    }
+    isCancelled = true;
+  }
+
+  void _stillValid() {
+    if (isCancelled) throw StateError('Already cancelled');
   }
 }
 
@@ -63,6 +99,16 @@ class DownloadController {
 typedef ProgressCallback = void Function(int count, int total);
 
 Future<DownloadController> download(String url, DownloadOptions options) async {
+  try {
+    final subscription = await _download(url, options);
+    return DownloadController._(subscription, options, url);
+  } catch (e) {
+    rethrow;
+  }
+}
+
+Future<StreamSubscription> _download(
+    String url, DownloadOptions options) async {
   final client = options.httpClient ?? http.Client();
   try {
     var lastProgress = await options.progressDatabase.getProgress(url);
@@ -80,7 +126,7 @@ Future<DownloadController> download(String url, DownloadOptions options) async {
         final currentProgress = lastProgress + data.length;
         await options.progressDatabase.setProgress(url, currentProgress);
         lastProgress = currentProgress;
-        options.progressCallback(currentProgress, total);
+        options.progressCallback?.call(currentProgress, total);
         subscription.resume();
       },
       onDone: () async {
@@ -91,7 +137,7 @@ Future<DownloadController> download(String url, DownloadOptions options) async {
         }
       },
     );
-    return DownloadController._(subscription);
+    return subscription;
   } catch (e) {
     rethrow;
   }
